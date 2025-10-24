@@ -6,7 +6,6 @@ namespace AssetStudio
     {
         public string Name { get; set; }
         public string Container { get; set; }
-        public bool IsRoot { get; set; }
         public MonoBehaviour CubismModelMono { get; set; }
         public MonoBehaviour PhysicsController { get; set; }
         public MonoBehaviour FadeController { get; set; }
@@ -15,17 +14,18 @@ namespace AssetStudio
         public List<MonoBehaviour> ParamDisplayInfoList { get; set; }
         public List<MonoBehaviour> PartDisplayInfoList { get; set; }
         public List<MonoBehaviour> PosePartList { get; set; }
+        public List<AnimationClip> ClipMotionList { get; set; }
         public GameObject ModelGameObject { get; set; }
 
         public CubismModel(GameObject m_GameObject)
         {
             Name = m_GameObject.m_Name;
-            IsRoot = m_GameObject.m_Transform.m_Father.IsNull;
             ModelGameObject = m_GameObject;
             RenderTextureList = new List<MonoBehaviour>();
             ParamDisplayInfoList = new List<MonoBehaviour>();
             PartDisplayInfoList = new List<MonoBehaviour>();
             PosePartList = new List<MonoBehaviour>();
+            ClipMotionList = new List<AnimationClip>();
         }
     }
 }

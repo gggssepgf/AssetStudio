@@ -49,12 +49,13 @@
         EmbeddedLinux,
         QNX,
         VisionOS,
+        Switch2,
         UnknownPlatform = 9999
     }
 
     public enum TuanjieBuildTarget
     {
-        WeixinMiniGame = 47,
+        MiniGame = 47,
         OpenHarmony,
         HMIAndroid,
         ArmLinux,

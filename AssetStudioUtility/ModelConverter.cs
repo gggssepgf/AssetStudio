@@ -23,14 +23,16 @@ namespace AssetStudio
         private Dictionary<Transform, ImportedFrame> transformDictionary = new Dictionary<Transform, ImportedFrame>();
         Dictionary<uint, string> morphChannelNames = new Dictionary<uint, string>();
         private IEqualityComparer<AnimationClip> animationClipEqComparer = new AnimationClip.EqComparer();
+        private bool collectAnimationClips;
 
-        public ModelConverter(GameObject m_GameObject, ImageFormat imageFormat, AnimationClip[] animationList = null)
+        public ModelConverter(GameObject m_GameObject, ImageFormat imageFormat, List<AnimationClip> animationList = null)
         {
+            collectAnimationClips = animationList == null;
             this.imageFormat = imageFormat;
             if (m_GameObject.m_Animator != null)
             {
                 InitWithAnimator(m_GameObject.m_Animator);
-                if (animationList == null)
+                if (collectAnimationClips)
                 {
                     CollectAnimationClip(m_GameObject.m_Animator);
                 }
@@ -39,20 +41,22 @@ namespace AssetStudio
             {
                 InitWithGameObject(m_GameObject);
             }
-            if (animationList != null)
+            if (animationList != null && animationList.Count > 0)
             {
+                Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
                 animationClipUniqArray = animationList.Distinct(animationClipEqComparer).ToArray();
             }
             ConvertAnimations();
         }
 
-        public ModelConverter(string rootName, List<GameObject> m_GameObjects, ImageFormat imageFormat, AnimationClip[] animationList = null)
+        public ModelConverter(string rootName, List<GameObject> m_GameObjects, ImageFormat imageFormat, List<AnimationClip> animationList = null)
         {
+            collectAnimationClips = animationList == null;
             this.imageFormat = imageFormat;
             RootFrame = CreateFrame(rootName, Vector3.Zero, new Quaternion(0, 0, 0, 0), Vector3.One);
             foreach (var m_GameObject in m_GameObjects)
             {
-                if (m_GameObject.m_Animator != null && animationList == null)
+                if (m_GameObject.m_Animator != null && collectAnimationClips)
                 {
                     CollectAnimationClip(m_GameObject.m_Animator);
                 }
@@ -66,23 +70,26 @@ namespace AssetStudio
                 var m_Transform = m_GameObject.m_Transform;
                 ConvertMeshRenderer(m_Transform);
             }
-            if (animationList != null)
+            if (animationList != null && animationList.Count > 0)
             {
+                Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
                 animationClipUniqArray = animationList.Distinct(animationClipEqComparer).ToArray();
             }
             ConvertAnimations();
         }
 
-        public ModelConverter(Animator m_Animator, ImageFormat imageFormat, AnimationClip[] animationList = null)
+        public ModelConverter(Animator m_Animator, ImageFormat imageFormat, List<AnimationClip> animationList = null)
         {
+            collectAnimationClips = animationList == null;
             this.imageFormat = imageFormat;
             InitWithAnimator(m_Animator);
-            if (animationList == null)
+            if (collectAnimationClips)
             {
                 CollectAnimationClip(m_Animator);
             }
-            else
+            else if (animationList?.Count > 0)
             {
+                Logger.Debug($"Selected AnimationClip(s):\n\"{string.Join("\"\n\"", animationList.Select(x => x.m_Name))}\"");
                 animationClipUniqArray = animationList.Distinct(animationClipEqComparer).ToArray();
             }
             ConvertAnimations();
@@ -150,7 +157,7 @@ namespace AssetStudio
                 ConvertMeshRenderer(m_GameObject.m_SkinnedMeshRenderer);
             }
 
-            if (m_GameObject.m_Animation != null)
+            if (m_GameObject.m_Animation != null && collectAnimationClips)
             {
                 var animationList = new List<AnimationClip>();
                 foreach (var animation in m_GameObject.m_Animation.m_Animations)
@@ -178,35 +185,24 @@ namespace AssetStudio
         {
             if (m_Animator.m_Controller.TryGet(out var m_Controller))
             {
+                AnimatorController m_AnimatorController;
                 var animationList = new List<AnimationClip>();
-                switch (m_Controller)
+                if (m_Controller is AnimatorOverrideController overrideController)
                 {
-                    case AnimatorOverrideController m_AnimatorOverrideController:
-                        {
-                            if (m_AnimatorOverrideController.m_Controller.TryGet<AnimatorController>(out var m_AnimatorController))
-                            {
-                                foreach (var pptr in m_AnimatorController.m_AnimationClips)
-                                {
-                                    if (pptr.TryGet(out var m_AnimationClip))
-                                    {
-                                        animationList.Add(m_AnimationClip);
-                                    }
-                                }
-                            }
-                            break;
-                        }
+                    if (!overrideController.m_Controller.TryGet(out m_AnimatorController))
+                        return;
+                }
+                else
+                {
+                    m_AnimatorController = (AnimatorController)m_Controller;
+                }
 
-                    case AnimatorController m_AnimatorController:
-                        {
-                            foreach (var pptr in m_AnimatorController.m_AnimationClips)
-                            {
-                                if (pptr.TryGet(out var m_AnimationClip))
-                                {
-                                    animationList.Add(m_AnimationClip);
-                                }
-                            }
-                            break;
-                        }
+                foreach (var pptr in m_AnimatorController.m_AnimationClips)
+                {
+                    if (pptr.TryGet(out var m_AnimationClip))
+                    {
+                        animationList.Add(m_AnimationClip);
+                    }
                 }
                 animationClipUniqArray = animationList.Distinct(animationClipEqComparer).ToArray();
             }
@@ -214,7 +210,7 @@ namespace AssetStudio
 
         private ImportedFrame ConvertTransform(Transform trans)
         {
-            var frame = new ImportedFrame(trans.m_Children.Length);
+            var frame = new ImportedFrame(trans.m_Children.Count);
             transformDictionary.Add(trans, frame);
             trans.m_GameObject.TryGet(out var m_GameObject);
             frame.Name = m_GameObject.m_Name;
@@ -260,6 +256,8 @@ namespace AssetStudio
             var mesh = GetMesh(meshR);
             if (mesh == null)
                 return;
+            
+            mesh.ProcessData();
             var iMesh = new ImportedMesh();
             meshR.m_GameObject.TryGet(out var m_GameObject2);
             iMesh.Path = GetTransformPath(m_GameObject2.m_Transform);
@@ -297,7 +295,7 @@ namespace AssetStudio
             iMesh.hasColor = mesh.m_Colors?.Length > 0;
 
             int firstFace = 0;
-            for (int i = 0; i < mesh.m_SubMeshes.Length; i++)
+            for (int i = 0; i < mesh.m_SubMeshes.Count; i++)
             {
                 int numFaces = (int)mesh.m_SubMeshes[i].indexCount / 3;
                 if (subHashSet.Count > 0 && !subHashSet.Contains(i))
@@ -308,7 +306,7 @@ namespace AssetStudio
                 var submesh = mesh.m_SubMeshes[i];
                 var iSubmesh = new ImportedSubmesh();
                 Material mat = null;
-                if (i - firstSubMesh < meshR.m_Materials.Length)
+                if (i - firstSubMesh < meshR.m_Materials.Count)
                 {
                     if (meshR.m_Materials[i - firstSubMesh].TryGet(out var m_Material))
                     {
@@ -421,16 +419,16 @@ namespace AssetStudio
                  * 2 - m_BoneNameHashes
                  */
                 var boneType = 0;
-                if (sMesh.m_Bones.Length > 0)
+                if (sMesh.m_Bones.Count > 0)
                 {
-                    if (sMesh.m_Bones.Length == mesh.m_BindPose.Length)
+                    if (sMesh.m_Bones.Count == mesh.m_BindPose.Length)
                     {
                         var verifiedBoneCount = sMesh.m_Bones.Count(x => x.TryGet(out _));
                         if (verifiedBoneCount > 0)
                         {
                             boneType = 1;
                         }
-                        if (verifiedBoneCount != sMesh.m_Bones.Length)
+                        if (verifiedBoneCount != sMesh.m_Bones.Count)
                         {
                             //尝试使用m_BoneNameHashes 4.3 and up
                             if (mesh.m_BindPose.Length > 0 && (mesh.m_BindPose.Length == mesh.m_BoneNameHashes?.Length))
@@ -460,7 +458,7 @@ namespace AssetStudio
 
                 if (boneType == 1)
                 {
-                    var boneCount = sMesh.m_Bones.Length;
+                    var boneCount = sMesh.m_Bones.Count;
                     iMesh.BoneList = new List<ImportedBone>(boneCount);
                     for (int i = 0; i < boneCount; i++)
                     {
@@ -491,13 +489,13 @@ namespace AssetStudio
                 }
 
                 //Morphs
-                if (mesh.m_Shapes?.channels?.Length > 0)
+                if (mesh.m_Shapes?.channels?.Count > 0)
                 {
                     var morph = new ImportedMorph();
                     MorphList.Add(morph);
                     morph.Path = iMesh.Path;
-                    morph.Channels = new List<ImportedMorphChannel>(mesh.m_Shapes.channels.Length);
-                    for (int i = 0; i < mesh.m_Shapes.channels.Length; i++)
+                    morph.Channels = new List<ImportedMorphChannel>(mesh.m_Shapes.channels.Count);
+                    for (var i = 0; i < mesh.m_Shapes.channels.Count; i++)
                     {
                         var channel = new ImportedMorphChannel();
                         morph.Channels.Add(channel);
@@ -512,7 +510,7 @@ namespace AssetStudio
                         channel.Name = shapeChannel.name.Split('.').Last();
                         channel.KeyframeList = new List<ImportedMorphKeyframe>(shapeChannel.frameCount);
                         var frameEnd = shapeChannel.frameIndex + shapeChannel.frameCount;
-                        for (int frameIdx = shapeChannel.frameIndex; frameIdx < frameEnd; frameIdx++)
+                        for (var frameIdx = shapeChannel.frameIndex; frameIdx < frameEnd; frameIdx++)
                         {
                             var keyframe = new ImportedMorphKeyframe();
                             channel.KeyframeList.Add(keyframe);
@@ -597,7 +595,7 @@ namespace AssetStudio
             {
                 Logger.Debug("Mesh Renderer had no Mesh attached, trying to find Mesh by name..");
                 var meshR_originalName = m_GameObject.m_Name;
-                foreach (var serializedFile in m_GameObject.assetsFile.assetsManager.assetsFileList)
+                foreach (var serializedFile in m_GameObject.assetsFile.assetsManager.AssetsFileList)
                 {
                     var nameRelatedMesh = (Mesh)serializedFile.Objects.Find(x => x is Mesh m_Mesh && m_Mesh.m_Name == meshR_originalName);
                     if (nameRelatedMesh != null)
@@ -785,13 +783,18 @@ namespace AssetStudio
 
         private void ConvertAnimations()
         {
-            foreach (var animationClip in animationClipUniqArray)
+            var totalCount = animationClipUniqArray.Length;
+            if (totalCount > 0)
+                Logger.Info($"Trying to convert {totalCount} animation(s)...");
+
+            for (var k = 0; k < totalCount; k++)
             {
+                var animationClip = animationClipUniqArray[k];
                 var iAnim = new ImportedKeyframedAnimation();
                 var name = animationClip.m_Name;
                 if (AnimationList.Exists(x => x.Name == name))
                 {
-                    for (int i = 1; ; i++)
+                    for (var i = 1; ; i++)
                     {
                         var fixName = name + $"_{i}";
                         if (!AnimationList.Exists(x => x.Name == fixName))
@@ -807,7 +810,7 @@ namespace AssetStudio
                 AnimationList.Add(iAnim);
                 if (animationClip.m_Legacy)
                 {
-                    foreach (var m_CompressedRotationCurve in animationClip.m_CompressedRotationCurves)
+                    foreach (var m_CompressedRotationCurve in animationClip?.m_CompressedRotationCurves)
                     {
                         var track = iAnim.FindTrack(FixBonePath(animationClip, m_CompressedRotationCurve.m_Path));
 
@@ -854,15 +857,12 @@ namespace AssetStudio
                             track.Scalings.Add(new ImportedKeyframe<Vector3>(m_Curve.time, new Vector3(m_Curve.value.X, m_Curve.value.Y, m_Curve.value.Z)));
                         }
                     }
-                    if (animationClip.m_EulerCurves != null)
+                    foreach (var m_EulerCurve in animationClip?.m_EulerCurves)
                     {
-                        foreach (var m_EulerCurve in animationClip.m_EulerCurves)
+                        var track = iAnim.FindTrack(FixBonePath(animationClip, m_EulerCurve.path));
+                        foreach (var m_Curve in m_EulerCurve.curve.m_Curve)
                         {
-                            var track = iAnim.FindTrack(FixBonePath(animationClip, m_EulerCurve.path));
-                            foreach (var m_Curve in m_EulerCurve.curve.m_Curve)
-                            {
-                                track.Rotations.Add(new ImportedKeyframe<Vector3>(m_Curve.time, new Vector3(m_Curve.value.X, -m_Curve.value.Y, -m_Curve.value.Z)));
-                            }
+                            track.Rotations.Add(new ImportedKeyframe<Vector3>(m_Curve.time, new Vector3(m_Curve.value.X, -m_Curve.value.Y, -m_Curve.value.Z)));
                         }
                     }
                     foreach (var m_FloatCurve in animationClip.m_FloatCurves)
@@ -896,22 +896,22 @@ namespace AssetStudio
                     var m_Clip = animationClip.m_MuscleClip.m_Clip.data;
                     var streamedFrames = m_Clip.m_StreamedClip.ReadData();
                     var m_ClipBindingConstant = animationClip.m_ClipBindingConstant ?? m_Clip.ConvertValueArrayToGenericBinding();
-                    for (int frameIndex = 1; frameIndex < streamedFrames.Count - 1; frameIndex++)
+                    for (var frameIndex = 1; frameIndex < streamedFrames.Count - 1; frameIndex++)
                     {
                         var frame = streamedFrames[frameIndex];
                         var streamedValues = frame.keyList.Select(x => x.value).ToArray();
-                        for (int curveIndex = 0; curveIndex < frame.keyList.Length;)
+                        for (var curveIndex = 0; curveIndex < frame.keyList.Count;)
                         {
                             ReadCurveData(iAnim, m_ClipBindingConstant, frame.keyList[curveIndex].index, frame.time, streamedValues, 0, ref curveIndex);
                         }
                     }
                     var m_DenseClip = m_Clip.m_DenseClip;
                     var streamCount = m_Clip.m_StreamedClip.curveCount;
-                    for (int frameIndex = 0; frameIndex < m_DenseClip.m_FrameCount; frameIndex++)
+                    for (var frameIndex = 0; frameIndex < m_DenseClip.m_FrameCount; frameIndex++)
                     {
                         var time = m_DenseClip.m_BeginTime + frameIndex / m_DenseClip.m_SampleRate;
                         var frameOffset = frameIndex * m_DenseClip.m_CurveCount;
-                        for (int curveIndex = 0; curveIndex < m_DenseClip.m_CurveCount;)
+                        for (var curveIndex = 0; curveIndex < m_DenseClip.m_CurveCount;)
                         {
                             var index = streamCount + curveIndex;
                             ReadCurveData(iAnim, m_ClipBindingConstant, (int)index, time, m_DenseClip.m_SampleArray, (int)frameOffset, ref curveIndex);
@@ -922,9 +922,9 @@ namespace AssetStudio
                         var m_ConstantClip = m_Clip.m_ConstantClip;
                         var denseCount = m_Clip.m_DenseClip.m_CurveCount;
                         var time2 = 0.0f;
-                        for (int i = 0; i < 2; i++)
+                        for (var i = 0; i < 2; i++)
                         {
-                            for (int curveIndex = 0; curveIndex < m_ConstantClip.data.Length;)
+                            for (var curveIndex = 0; curveIndex < m_ConstantClip.data.Length;)
                             {
                                 var index = streamCount + denseCount + curveIndex;
                                 ReadCurveData(iAnim, m_ClipBindingConstant, (int)index, time2, m_ConstantClip.data, 0, ref curveIndex);
@@ -933,6 +933,7 @@ namespace AssetStudio
                         }
                     }
                 }
+                Console.Write($"Converted [{k+1}/{totalCount}] animations\r");
             }
         }
 

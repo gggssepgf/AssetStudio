@@ -75,7 +75,7 @@ namespace CubismLive2DExtractor
                 PhysicsMono = Model.PhysicsController;
                 if (searchFadeMotions && TryGetFadeList(Model.FadeController, out var fadeMono))
                 {
-                    FadeMotionLst = selFadeMotionLst = fadeMono;
+                    FadeMotionLst = fadeMono;
                 }
                 if (TryGetExpressionList(Model.ExpressionController, out var expressionMono))
                 {
@@ -86,7 +86,8 @@ namespace CubismLive2DExtractor
                     var renderList = Model.RenderTextureList;
                     foreach (var renderMono in renderList)
                     {
-                        if (!TryGetRenderTexture(renderMono, out var tex))
+                        isRenderReadable = TryGetRenderTexture(renderMono, out var tex);
+                        if (!isRenderReadable)
                             break;
                         renderTextureSet.Add(tex);
                     }
@@ -106,6 +107,10 @@ namespace CubismLive2DExtractor
                 {
                     PoseParts = Model.PosePartList;
                     searchPoseParts = false;
+                }
+                if (Model.ClipMotionList.Count > 0 && selClipMotions == null)
+                {
+                    AnimationClips = Model.ClipMotionList;
                 }
             }
             foreach (var asset in assetGroupKvp.Value)
@@ -205,12 +210,17 @@ namespace CubismLive2DExtractor
             {
                 Texture2Ds = renderTextureSet.ToList();
             }
+            if (AnimationClips.Count > 0)
+            {
+                AnimationClips = AnimationClips.Distinct().ToList();
+            }
         }
 
         public void ExtractCubismModel(string destPath, Live2DMotionMode motionMode, bool forceBezier = false, int parallelTaskCount = 1)
         {
+            var modelName = Model?.Name ?? destPath.Split('/', '\\').Last();
+            destPath += Path.DirectorySeparatorChar;
             Directory.CreateDirectory(destPath);
-            var modelName = Model?.Name ?? "model";
 
             #region moc3
             using (var cubismMoc = new CubismMoc(MocMono))
@@ -226,7 +236,11 @@ namespace CubismLive2DExtractor
                     sb.AppendLine($"Center Y: {cubismMoc.CentralPosY}");
                     sb.AppendLine($"Pixel Per Unit: {cubismMoc.PixelPerUnit}");
                     sb.AppendLine($"Part Count: {cubismMoc.PartCount}");
-                    sb.AppendLine($"Parameter Count: {cubismMoc.ParamCount}");
+                    sb.AppendLine($"Parameter Count: {cubismMoc.ParamCount}\n");
+                    sb.AppendLine($"Bound AnimationClips: {Model?.ClipMotionList.Count}");
+                    sb.AppendLine($"Bound ParamDisplayInfoList: {Model?.ParamDisplayInfoList.Count}");
+                    sb.AppendLine($"Bound PartDisplayInfoList: {Model?.PartDisplayInfoList.Count}");
+                    sb.AppendLine($"Bound PosePartList: {Model?.PosePartList.Count}");
                     Logger.Debug(sb.ToString());
 
                     ParameterNames = cubismMoc.ParamNames;

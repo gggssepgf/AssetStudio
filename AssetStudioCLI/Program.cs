@@ -13,7 +13,7 @@ namespace AssetStudioCLI
             {
                 CLIRun();
             }
-            else if (CLIOptions.showHelp)
+            else if (CLIOptions.f_displayHelp.Value)
             {
                 CLIOptions.ShowHelp();
             }
@@ -58,6 +58,9 @@ namespace AssetStudioCLI
                         case WorkMode.SplitObjects:
                             Studio.ExportSplitObjects();
                             break;
+                        case WorkMode.Animator:
+                            Studio.ExportAnimator();
+                            break;
                         default:
                             Studio.ExportAssets();
                             break;
@@ -70,6 +73,7 @@ namespace AssetStudioCLI
             }
             finally
             {
+                Studio.Clear();
                 cliLogger.LogToFile(LoggerEvent.Verbose, "---Program ended---");
             }
         }       

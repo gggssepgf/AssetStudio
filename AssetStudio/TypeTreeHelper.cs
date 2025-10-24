@@ -29,11 +29,11 @@ namespace AssetStudio
             var m_Nodes = m_Type.m_Nodes;
             try
             {
-                for (int i = 0; i < m_Nodes.Count; i++)
+                for (var i = 0; i < m_Nodes.Count; i++)
                 {
                     ReadStringValue(sb, m_Nodes, reader, ref i);
+                    readed = reader.Position - reader.byteStart;
                 }
-                readed = reader.Position - reader.byteStart;
             }
             catch (Exception)
             {
@@ -102,7 +102,7 @@ namespace AssetStudio
                 case "bool":
                     value = reader.ReadBoolean();
                     break;
-                case "string":
+                case "string" when m_Nodes[i + 1].m_Type == "Array":
                     append = false;
                     var str = reader.ReadAlignedString();
                     sb.AppendFormat("{0}{1} {2} = \"{3}\"\r\n", (new string('\t', level)), varTypeStr, varNameStr, str);
@@ -167,6 +167,8 @@ namespace AssetStudio
                         }
                         else //Class
                         {
+                            if (m_Node.m_Type == "string")
+                                m_Node.m_Type = "CustomType";
                             append = false;
                             sb.AppendFormat("{0}{1} {2}\r\n", (new string('\t', level)), varTypeStr, varNameStr);
                             var @class = GetNodes(m_Nodes, i);
@@ -206,8 +208,8 @@ namespace AssetStudio
                     var m_Node = m_Nodes[i];
                     var varNameStr = m_Node.m_Name;
                     obj[varNameStr] = ReadValue(m_Nodes, reader, ref i);
+                    readed = reader.Position - reader.byteStart;
                 }
-                readed = reader.Position - reader.byteStart;
             }
             catch (Exception)
             {
@@ -272,7 +274,7 @@ namespace AssetStudio
                 case "bool":
                     value = reader.ReadBoolean();
                     break;
-                case "string":
+                case "string" when m_Nodes[i + 1].m_Type == "Array":
                     value = reader.ReadAlignedString();
                     var toSkip = GetNodes(m_Nodes, i);
                     i += toSkip.Count - 1;
@@ -300,10 +302,11 @@ namespace AssetStudio
                 case "TypelessData":
                     {
                         var size = reader.ReadInt32();
+                        var offset = size > 0 ? reader.BaseStream.Position : 0;
                         var dic = new OrderedDictionary
                         {
-                            { "Offset", reader.BaseStream.Position },
-                            { "Size", size }
+                            {"Offset", offset},
+                            {"Size", size}
                         };
                         value = dic;
                         reader.BaseStream.Position += size;
@@ -312,6 +315,8 @@ namespace AssetStudio
                     }
                 default:
                     {
+                        if (m_Node.m_Type == "string")
+                            m_Node.m_Type = "CustomType";
                         if (i < m_Nodes.Count - 1 && m_Nodes[i + 1].m_Type == "Array") //Array
                         {
                             if ((m_Nodes[i + 1].m_MetaFlag & 0x4000) != 0)

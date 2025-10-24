@@ -1,5 +1,6 @@
 ﻿using AssetStudio;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -7,11 +8,14 @@ namespace AssetStudioGUI
 {
     public partial class ExportOptions : Form
     {
+        private static Dictionary<int, int> uvBindings;
+
         public ExportOptions()
         {
             InitializeComponent();
             assetGroupOptions.SelectedIndex = Properties.Settings.Default.assetGroupOption;
             filenameFormatComboBox.SelectedIndex = Properties.Settings.Default.filenameFormat;
+            overwriteExistingFiles.Checked = Properties.Settings.Default.overwriteExistingFiles;
             restoreExtensionName.Checked = Properties.Settings.Default.restoreExtensionName;
             converttexture.Checked = Properties.Settings.Default.convertTexture;
             exportSpriteWithAlphaMask.Checked = Properties.Settings.Default.exportSpriteWithMask;
@@ -25,29 +29,22 @@ namespace AssetStudioGUI
             parallelExportUpDown.Value = taskCount <= 0 ? maxParallelTasks : Math.Min(taskCount, maxParallelTasks);
             parallelExportMaxLabel.Text += maxParallelTasks;
             parallelExportCheckBox.Checked = Properties.Settings.Default.parallelExport;
-            eulerFilter.Checked = Properties.Settings.Default.eulerFilter;
-            filterPrecision.Value = Properties.Settings.Default.filterPrecision;
-            exportAllNodes.Checked = Properties.Settings.Default.exportAllNodes;
-            exportSkins.Checked = Properties.Settings.Default.exportSkins;
-            exportAnimations.Checked = Properties.Settings.Default.exportAnimations;
-            exportBlendShape.Checked = Properties.Settings.Default.exportBlendShape;
-            castToBone.Checked = Properties.Settings.Default.castToBone;
-            exportAllUvsAsDiffuseMaps.Checked = Properties.Settings.Default.exportAllUvsAsDiffuseMaps;
-            boneSize.Value = Properties.Settings.Default.boneSize;
-            scaleFactor.Value = Properties.Settings.Default.scaleFactor;
-            fbxVersion.SelectedIndex = Properties.Settings.Default.fbxVersion;
-            fbxFormat.SelectedIndex = Properties.Settings.Default.fbxFormat;
+            rawByteArrayFromMono.Checked = Properties.Settings.Default.rawByteArrayFromMono;
+
             l2dModelGroupComboBox.SelectedIndex = (int)Properties.Settings.Default.l2dModelGroupOption;
             l2dAssetSearchByFilenameCheckBox.Checked = Properties.Settings.Default.l2dAssetSearchByFilename;
             var defaultMotionMode = Properties.Settings.Default.l2dMotionMode.ToString();
             ((RadioButton)l2dMotionExportMethodPanel.Controls.Cast<Control>().First(x => x.AccessibleName == defaultMotionMode)).Checked = true;
             l2dForceBezierCheckBox.Checked = Properties.Settings.Default.l2dForceBezier;
+
+            SetFromFbxSettings(Studio.FbxSettings);
         }
 
         private void OKbutton_Click(object sender, EventArgs e)
         {
             Properties.Settings.Default.assetGroupOption = assetGroupOptions.SelectedIndex;
             Properties.Settings.Default.filenameFormat = filenameFormatComboBox.SelectedIndex;
+            Properties.Settings.Default.overwriteExistingFiles = overwriteExistingFiles.Checked;
             Properties.Settings.Default.restoreExtensionName = restoreExtensionName.Checked;
             Properties.Settings.Default.convertTexture = converttexture.Checked;
             Properties.Settings.Default.exportSpriteWithMask = exportSpriteWithAlphaMask.Checked;
@@ -57,23 +54,36 @@ namespace AssetStudioGUI
             Properties.Settings.Default.openAfterExport = openAfterExport.Checked;
             Properties.Settings.Default.parallelExport = parallelExportCheckBox.Checked;
             Properties.Settings.Default.parallelExportCount = (int)parallelExportUpDown.Value;
-            Properties.Settings.Default.eulerFilter = eulerFilter.Checked;
-            Properties.Settings.Default.filterPrecision = filterPrecision.Value;
-            Properties.Settings.Default.exportAllNodes = exportAllNodes.Checked;
-            Properties.Settings.Default.exportSkins = exportSkins.Checked;
-            Properties.Settings.Default.exportAnimations = exportAnimations.Checked;
-            Properties.Settings.Default.exportBlendShape = exportBlendShape.Checked;
-            Properties.Settings.Default.castToBone = castToBone.Checked;
-            Properties.Settings.Default.exportAllUvsAsDiffuseMaps = exportAllUvsAsDiffuseMaps.Checked;
-            Properties.Settings.Default.boneSize = boneSize.Value;
-            Properties.Settings.Default.scaleFactor = scaleFactor.Value;
-            Properties.Settings.Default.fbxVersion = fbxVersion.SelectedIndex;
-            Properties.Settings.Default.fbxFormat = fbxFormat.SelectedIndex;
+            Properties.Settings.Default.rawByteArrayFromMono = rawByteArrayFromMono.Checked;
+
             Properties.Settings.Default.l2dModelGroupOption = (CubismLive2DExtractor.Live2DModelGroupOption)l2dModelGroupComboBox.SelectedIndex;
             Properties.Settings.Default.l2dAssetSearchByFilename = l2dAssetSearchByFilenameCheckBox.Checked;
             var checkedMotionMode = (RadioButton)l2dMotionExportMethodPanel.Controls.Cast<Control>().First(x => ((RadioButton)x).Checked);
             Properties.Settings.Default.l2dMotionMode = (CubismLive2DExtractor.Live2DMotionMode)Enum.Parse(typeof(CubismLive2DExtractor.Live2DMotionMode), checkedMotionMode.AccessibleName);
             Properties.Settings.Default.l2dForceBezier = l2dForceBezierCheckBox.Checked;
+
+            Studio.FbxSettings.EulerFilter = eulerFilter.Checked;
+            Studio.FbxSettings.FilterPrecision = (float)filterPrecision.Value;
+            Studio.FbxSettings.ExportAllNodes = exportAllNodes.Checked;
+            Studio.FbxSettings.ExportSkins = exportSkins.Checked;
+            Studio.FbxSettings.ExportAnimations = exportAnimations.Checked;
+            Studio.FbxSettings.ExportBlendShape = exportBlendShape.Checked;
+            Studio.FbxSettings.CastToBone = castToBone.Checked;
+            Studio.FbxSettings.ExportAllUvsAsDiffuseMaps = exportAllUvsAsDiffuseMaps.Checked;
+            Studio.FbxSettings.BoneSize = (int)boneSize.Value;
+            Studio.FbxSettings.ScaleFactor = (float)scaleFactor.Value;
+            Studio.FbxSettings.FbxVersionIndex = fbxVersion.SelectedIndex;
+            Studio.FbxSettings.FbxFormat = fbxFormat.SelectedIndex;
+            for (var i = 0; i < uvIndicesCheckedListBox.Items.Count; i++)
+            {
+                var isChecked = uvIndicesCheckedListBox.GetItemChecked(i);
+                var type = uvBindings[i];
+                if ((isChecked && type < 0) || (!isChecked && type > 0))
+                    uvBindings[i] *= -1;
+            }
+            Studio.FbxSettings.UvBindings = uvBindings;
+            Properties.Settings.Default.fbxSettings = Studio.FbxSettings.ToBase64();
+
             Properties.Settings.Default.Save();
             DialogResult = DialogResult.OK;
             Close();
@@ -88,6 +98,59 @@ namespace AssetStudioGUI
         private void parallelExportCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             parallelExportUpDown.Enabled = parallelExportCheckBox.Checked;
+        }
+
+        private void uvIndicesCheckedListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (exportAllUvsAsDiffuseMaps.Checked)
+                return;
+
+            if (uvBindings.TryGetValue(uvIndicesCheckedListBox.SelectedIndex, out var uvType))
+            {
+                uvTypesListBox.SelectedIndex = (int)MathF.Abs(uvType) - 1;
+            }
+        }
+
+        private void uvTypesListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            var selectedUv = uvIndicesCheckedListBox.SelectedIndex;
+            uvBindings[selectedUv] = uvTypesListBox.SelectedIndex + 1;
+        }
+
+        private void exportAllUvsAsDiffuseMaps_CheckedChanged(object sender, EventArgs e)
+        {
+            uvTypesListBox.Enabled = !exportAllUvsAsDiffuseMaps.Checked;
+            uvIndicesCheckedListBox.Enabled = !exportAllUvsAsDiffuseMaps.Checked;
+        }
+
+        private void SetFromFbxSettings(Fbx.Settings fbxSettings)
+        {
+            eulerFilter.Checked = fbxSettings.EulerFilter;
+            filterPrecision.Value = (decimal)fbxSettings.FilterPrecision;
+            exportAllNodes.Checked = fbxSettings.ExportAllNodes;
+            exportSkins.Checked = fbxSettings.ExportSkins;
+            exportAnimations.Checked = fbxSettings.ExportAnimations;
+            exportBlendShape.Checked = fbxSettings.ExportBlendShape;
+            castToBone.Checked = fbxSettings.CastToBone;
+            exportAllUvsAsDiffuseMaps.Checked = fbxSettings.ExportAllUvsAsDiffuseMaps;
+            boneSize.Value = (decimal)fbxSettings.BoneSize;
+            scaleFactor.Value = (decimal)fbxSettings.ScaleFactor;
+            fbxVersion.SelectedIndex = fbxSettings.FbxVersionIndex;
+            fbxFormat.SelectedIndex = fbxSettings.FbxFormat;
+            uvBindings = new Dictionary<int, int>(fbxSettings.UvBindings);
+            for (var i = 0; i < uvIndicesCheckedListBox.Items.Count; i++)
+            {
+                var isChecked = uvBindings[i] > 0;
+                uvIndicesCheckedListBox.SetItemChecked(i, isChecked);
+            }
+            uvTypesListBox.Enabled = !exportAllUvsAsDiffuseMaps.Checked;
+            uvIndicesCheckedListBox.Enabled = !exportAllUvsAsDiffuseMaps.Checked;
+        }
+
+        private void resetButton_Click(object sender, EventArgs e)
+        {
+            SetFromFbxSettings(new Fbx.Settings());
+            uvIndicesCheckedListBox_SelectedIndexChanged(sender, e);
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace AssetStudio
@@ -27,7 +28,7 @@ namespace AssetStudio
         public bool IsAlpha => BuildType == BuildTypes.Alpha;
         public bool IsBeta => BuildType == BuildTypes.Beta;
         public bool IsPatch => BuildType == BuildTypes.Patch;
-        public bool IsTuanjie => BuildType == BuildTypes.Tuanjie;
+        public bool IsTuanjie => BuildType == BuildTypes.Tuanjie && this >= (2022, 3, 2);
 
         public UnityVersion(string version)
         {
@@ -54,6 +55,7 @@ namespace AssetStudio
             }
         }
 
+        [JsonConstructor]
         public UnityVersion(int major = 0, int minor = 0, int patch = 0)
         {
             (Major, Minor, Patch) = (major, minor, patch);
@@ -63,6 +65,20 @@ namespace AssetStudio
                 Build = 1;
                 BuildType = BuildTypes.Final;
                 FullVersion += $"{BuildType}{Build}";
+            }
+        }
+
+        public static bool TryParse(string versionStr, out UnityVersion version)
+        {
+            version = null;
+            try
+            {
+                version = new UnityVersion(versionStr);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 
